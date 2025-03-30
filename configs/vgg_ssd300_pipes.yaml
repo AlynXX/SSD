@@ -1,0 +1,18 @@
+MODEL:
+  NUM_CLASSES: 2  # 2 klasy: tło + rury
+
+DATASETS:
+  TRAIN: ("train",)  # Nazwa Twojego zbioru treningowego
+  TEST: ("val",)     # Nazwa Twojego zbioru walidacyjnego
+
+INPUT:
+  IMAGE_SIZE: 300
+
+SOLVER:
+  BATCH_SIZE: 2  # Jeśli masz dużo pamięci GPU, zwiększ do 2 lub 4
+  MAX_ITER: 6800  # 100 epok dla 68 obrazów
+  LR: 0.0001
+  LR_STEPS: [4000, 6000]  # Dostosuj kroki LR do nowego MAX_ITER (np. 60% i 90%)
+  WARMUP_ITERS: 100
+
+OUTPUT_DIR: "outputs/pipes"  # Gdzie zapisywać wyniki

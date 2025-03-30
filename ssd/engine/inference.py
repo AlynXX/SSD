@@ -1,84 +1,71 @@
-import logging
-import os
-
 import torch
-import torch.utils.data
-from tqdm import tqdm
-
 from ssd.data.build import make_data_loader
-from ssd.data.datasets.evaluation import evaluate
-
-from ssd.utils import dist_util, mkdir
-from ssd.utils.dist_util import synchronize, is_main_process
-
-
-def _accumulate_predictions_from_multiple_gpus(predictions_per_gpu):
-    all_predictions = dist_util.all_gather(predictions_per_gpu)
-    if not dist_util.is_main_process():
-        return
-    # merge the list of dicts
-    predictions = {}
-    for p in all_predictions:
-        predictions.update(p)
-    # convert a dict where the key is the index in a list
-    image_ids = list(sorted(predictions.keys()))
-    if len(image_ids) != image_ids[-1] + 1:
-        logger = logging.getLogger("SSD.inference")
-        logger.warning(
-            "Number of images that were gathered from multiple processes is not "
-            "a contiguous set. Some images might be missing from the evaluation"
-        )
-
-    # convert to a list
-    predictions = [predictions[i] for i in image_ids]
-    return predictions
-
-
-def compute_on_dataset(model, data_loader, device):
-    results_dict = {}
-    for batch in tqdm(data_loader):
-        images, targets, image_ids = batch
-        cpu_device = torch.device("cpu")
-        with torch.no_grad():
-            outputs = model(images.to(device))
-
-            outputs = [o.to(cpu_device) for o in outputs]
-        results_dict.update(
-            {int(img_id): result for img_id, result in zip(image_ids, outputs)}
-        )
-    return results_dict
-
-
-def inference(model, data_loader, dataset_name, device, output_folder=None, use_cached=False, **kwargs):
-    dataset = data_loader.dataset
-    logger = logging.getLogger("SSD.inference")
-    logger.info("Evaluating {} dataset({} images):".format(dataset_name, len(dataset)))
-    predictions_path = os.path.join(output_folder, 'predictions.pth')
-    if use_cached and os.path.exists(predictions_path):
-        predictions = torch.load(predictions_path, map_location='cpu')
-    else:
-        predictions = compute_on_dataset(model, data_loader, device)
-        synchronize()
-        predictions = _accumulate_predictions_from_multiple_gpus(predictions)
-    if not is_main_process():
-        return
-    if output_folder:
-        torch.save(predictions, predictions_path)
-    return evaluate(dataset=dataset, predictions=predictions, output_dir=output_folder, **kwargs)
+from ssd.utils.checkpoint import CheckPointer  # Poprawna nazwa klasy
 
 
 @torch.no_grad()
-def do_evaluation(cfg, model, distributed, **kwargs):
-    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-        model = model.module
+def do_evaluation(cfg, model, distributed=False, iteration=None):
     model.eval()
     device = torch.device(cfg.MODEL.DEVICE)
-    data_loaders_val = make_data_loader(cfg, is_train=False, distributed=distributed)
-    eval_results = []
-    for dataset_name, data_loader in zip(cfg.DATASETS.TEST, data_loaders_val):
-        output_folder = os.path.join(cfg.OUTPUT_DIR, "inference", dataset_name)
-        if not os.path.exists(output_folder):
-            mkdir(output_folder)
-        eval_result = inference(model, data_loader, dataset_name, device, output_folder, **kwargs)
-        eval_results.append(eval_result)
+    output_folder = cfg.OUTPUT_DIR
+
+    data_loader_val = make_data_loader(
+        cfg,
+        is_train=False,
+        distributed=distributed,
+    )
+
+    eval_results = {}
+    dataset_name = cfg.DATASETS.TEST[0]  # "val"
+    print(f"Evaluating dataset: {dataset_name}")
+    eval_result = inference(
+        model,
+        data_loader_val,
+        dataset_name,
+        device,
+        output_folder,
+        iteration=iteration,
+    )
+    eval_results[dataset_name] = eval_result
+
+    model.train()
     return eval_results
+
+
+def inference(model, data_loader, dataset_name, device, output_folder, **kwargs):
+    import os
+    import time
+    from tqdm import tqdm
+    from ssd.data.datasets.evaluation import evaluate
+    import numpy as np
+
+    predictions = []
+    timer = time.time()
+    num_images = len(data_loader.dataset)
+    print(f"Processing {num_images} images from {dataset_name}")
+
+    # Przetwarzaj batche i mapuj predykcje na indeksy obrazów
+    img_id_to_pred = {}
+    for i, (images, _, img_ids) in enumerate(tqdm(data_loader)):
+        images = images.to(device)
+        with torch.no_grad():
+            outputs = model(images)
+        for img_id, output in zip(img_ids, outputs):
+            img_id_to_pred[img_id.item()] = {
+                "boxes": output["boxes"].cpu().numpy(),
+                "labels": output["labels"].cpu().numpy(),
+                "scores": output["scores"].cpu().numpy(),
+            }
+
+    # Upewnij się, że predictions ma dokładnie num_images elementów
+    predictions = [img_id_to_pred.get(i, {"boxes": np.array([]), "labels": np.array([]), "scores": np.array([])})
+                   for i in range(num_images)]
+
+    print(f"Inference took {time.time() - timer:.3f} seconds")
+    result = evaluate(
+        dataset=data_loader.dataset,
+        predictions=predictions,
+        output_dir=output_folder,
+        **kwargs,
+    )
+    return result

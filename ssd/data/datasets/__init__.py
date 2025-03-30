@@ -1,35 +1,12 @@
-from torch.utils.data import ConcatDataset
-
+from .pipes import PipesDataset, register_pipes_datasets
 from ssd.config.path_catlog import DatasetCatalog
-from .voc import VOCDataset
-from .coco import COCODataset
 
-_DATASETS = {
-    'VOCDataset': VOCDataset,
-    'COCODataset': COCODataset,
-}
-
+register_pipes_datasets()
 
 def build_dataset(dataset_list, transform=None, target_transform=None, is_train=True):
-    assert len(dataset_list) > 0
-    datasets = []
-    for dataset_name in dataset_list:
-        data = DatasetCatalog.get(dataset_name)
-        args = data['args']
-        factory = _DATASETS[data['factory']]
-        args['transform'] = transform
-        args['target_transform'] = target_transform
-        if factory == VOCDataset:
-            args['keep_difficult'] = not is_train
-        elif factory == COCODataset:
-            args['remove_empty'] = is_train
-        dataset = factory(**args)
-        datasets.append(dataset)
-    # for testing, return a list of datasets
-    if not is_train:
-        return datasets
-    dataset = datasets[0]
-    if len(datasets) > 1:
-        dataset = ConcatDataset(datasets)
-
-    return [dataset]
+    assert len(dataset_list) == 1, f"Expected single dataset, got: {dataset_list}"
+    dataset_name = dataset_list[0]  # "train" lub "val"
+    dataset_fn = DatasetCatalog.get(dataset_name)
+    dataset = dataset_fn(transform=transform, target_transform=target_transform)
+    print(f"DEBUG: Created dataset '{dataset_name}' with {len(dataset)} items")
+    return dataset  # Zwracaj pojedynczy dataset, nie listę

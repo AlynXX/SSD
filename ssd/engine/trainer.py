@@ -89,6 +89,10 @@ def do_train(cfg, model,
 
         optimizer.zero_grad()
         loss.backward()
+        loss_dict = model(images, targets=targets)
+        total_loss = sum(loss for loss in loss_dict.values())
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)  # Dodaj to
         optimizer.step()
         scheduler.step()
 

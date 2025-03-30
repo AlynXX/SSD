@@ -1,29 +1,19 @@
-import sys
-import warnings
-
 import torch
-import torchvision
+from torchvision.ops import nms as torchvision_nms
 
-if torchvision.__version__ >= '0.3.0':
-    _nms = torchvision.ops.nms
-else:
-    warnings.warn('No NMS is available. Please upgrade torchvision to 0.3.0+')
-    sys.exit(-1)
-
-
-def nms(boxes, scores, nms_thresh):
-    """ Performs non-maximum suppression, run on GPU or CPU according to
-    boxes's device.
-    Args:
-        boxes(Tensor[N, 4]): boxes in (x1, y1, x2, y2) format, use absolute coordinates(or relative coordinates)
-        scores(Tensor[N]): scores
-        nms_thresh(float): thresh
-    Returns:
-        indices kept.
+def nms(boxes, scores, iou_threshold):
     """
-    keep = _nms(boxes, scores, nms_thresh)
-    return keep
-
+    Wykonuje Non-Maximum Suppression (NMS) na bounding boxach.
+    
+    Args:
+        boxes (Tensor): Tensor o kształcie [N, 4] z współrzędnymi [x1, y1, x2, y2].
+        scores (Tensor): Tensor o kształcie [N] z wartościami ufności.
+        iou_threshold (float): Próg IoU dla NMS.
+    
+    Returns:
+        keep (Tensor): Indeksy bounding boxów, które pozostają po NMS.
+    """
+    return torchvision_nms(boxes, scores, iou_threshold)
 
 def batched_nms(boxes, scores, idxs, iou_threshold):
     """
@@ -54,12 +44,8 @@ def batched_nms(boxes, scores, idxs, iou_threshold):
     """
     if boxes.numel() == 0:
         return torch.empty((0,), dtype=torch.int64, device=boxes.device)
-    # strategy: in order to perform NMS independently per class.
-    # we add an offset to all the boxes. The offset is dependent
-    # only on the class idx, and is large enough so that boxes
-    # from different classes do not overlap
     max_coordinate = boxes.max()
     offsets = idxs.to(boxes) * (max_coordinate + 1)
     boxes_for_nms = boxes + offsets[:, None]
-    keep = nms(boxes_for_nms, scores, iou_threshold)
+    keep = torchvision_nms(boxes_for_nms, scores, iou_threshold)
     return keep
