@@ -1,27 +1,69 @@
-# compilation and distribution
-__pycache__
+# 📝 Pythonowe pliki tymczasowe i cache
+__pycache__/
 *.pyc
-*.so
-ext/build/
-ext/torch_extension.egg-info/
+*.pyo
+*.pyd
+*.ipynb_checkpoints/
+
+# 🛠 Pliki konfiguracyjne dla IDE
+.vscode/
+.idea/
+*.sublime-workspace
+
+# 🔄 Pliki środowiska wirtualnego
+venv/
+ENV/
+env/
+SMLE_ENV_3_12/
+dml_venv/
+dml_venv_39/
+*.venv
+
+# 🏗 Pliki zależności i buildów
+*.egg-info/
+build/
 dist/
-*.egg-info
+*.whl
 
-# pytorch/python/numpy formats
+# 📂 Pliki wygenerowane przez pip i Poetry
+pip-log.txt
+pip-delete-this-directory.txt
+poetry.lock
+Pipfile.lock
+
+# 📊 Dane i modele (jeśli chcesz je przechowywać lokalnie, a nie na repo)
+dataset/
+dataset/train/
+dataset/test/
+dataset/*.json
+models/
+checkpoints/
 *.pth
-*.pkl
-*.npy
+*.pt
+*.onnx
 
-# ipython/jupyter notebooks
-*.ipynb
-**/.ipynb_checkpoints/
+# 📷 Tymczasowe pliki obrazów i logów
+# *.log
+# logs/
+*.png
+*.jpg
+# *.jpeg
+# *.gif
+# *.bmp
 
-# Editor temporaries
-*.swn
-*.swo
-*.swp
-*~
+# 🔬 Debug i testy
+debug.log
+tests/__pycache__/
+tests/output/
+logs/
 
-# Pycharm editor settings
-.idea
+# ⚠️ Pliki specyficzne dla systemów operacyjnych
 .DS_Store
+Thumbs.db
+*.bak
+*.swp
+*.swo
+*.orig
+
+*__pycache__*
+test

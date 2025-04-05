@@ -28,10 +28,16 @@ class BatchCollator:
 
 
 def make_data_loader(cfg, is_train=True, distributed=False, max_iter=None, start_iter=0):
+    # Wybór transformacji: z augmentacją dla treningu, bez dla walidacji
     train_transform = build_transforms(cfg, is_train=is_train)
     target_transform = build_target_transform(cfg) if is_train else None
     dataset_list = cfg.DATASETS.TRAIN if is_train else cfg.DATASETS.TEST
-    dataset = build_dataset(dataset_list, transform=train_transform, target_transform=target_transform, is_train=is_train)  # Pojedynczy dataset
+    dataset = build_dataset(
+        dataset_list,
+        transform=train_transform,
+        target_transform=target_transform,
+        is_train=is_train
+    )  # Pojedynczy dataset
 
     batch_size = cfg.SOLVER.BATCH_SIZE if is_train else cfg.TEST.BATCH_SIZE
     num_workers = cfg.DATA_LOADER.NUM_WORKERS
@@ -54,8 +60,9 @@ def make_data_loader(cfg, is_train=True, distributed=False, max_iter=None, start
         pin_memory=pin_memory,
     )
     
-    print(f"DEBUG: Number of data loaders created: 1")  # Teraz zawsze 1
-    return data_loader  # Zwracaj bezpośrednio DataLoader
+    print(f"DEBUG: Number of data loaders created: 1")
+    print(f"DEBUG: Created dataset '{dataset_list[0]}' with {len(dataset)} items")
+    return data_loader
 
 
 def make_batch_data_sampler(dataset, batch_size, num_iters=None, start_iter=0, distributed=False):

@@ -1,13 +1,13 @@
 # from https://github.com/amdegroot/ssd.pytorch
 
-
 import torch
-from torchvision import transforms
 import cv2
 import numpy as np
 import types
 from numpy import random
-
+import torchvision.transforms as T
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 def intersect(box_a, box_b):
     max_xy = np.minimum(box_a[:, 2:], box_b[2:])
@@ -125,14 +125,55 @@ class ToPercentCoords(object):
 
         return image, boxes, labels
 
-
+def build_transforms(cfg, is_train=True):
+    if is_train:
+        # Transformacje z augmentacją dla treningu
+        transform = A.Compose([
+            A.HorizontalFlip(p=0.5),  # Losowe odbicie poziome
+            A.Rotate(limit=15, p=0.5),  # Losowy obrót o ±15 stopni
+            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),  # Zmiana jasności i kontrastu
+            A.RandomResizedCrop(
+                height=cfg.INPUT.IMAGE_SIZE,
+                width=cfg.INPUT.IMAGE_SIZE,
+                scale=(0.8, 1.2),
+                p=0.5
+            ),  # Losowe skalowanie i przycinanie
+            A.Normalize(mean=cfg.INPUT.PIXEL_MEAN, std=[1.0, 1.0, 1.0]),  # Normalizacja
+            ToTensorV2(),  # Konwersja do tensora PyTorch
+        ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+    else:
+        # Transformacje bez augmentacji dla walidacji
+        transform = A.Compose([
+            A.Resize(height=cfg.INPUT.IMAGE_SIZE, width=cfg.INPUT.IMAGE_SIZE),
+            A.Normalize(mean=cfg.INPUT.PIXEL_MEAN, std=[1.0, 1.0, 1.0]),
+            ToTensorV2(),
+        ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+    return transform
+def build_target_transform(cfg):
+    return None
 class Resize(object):
-    def __init__(self, size=300):
+    def __init__(self, size=512):  # Zmiana domyślnego rozmiaru na 512
         self.size = size
 
     def __call__(self, image, boxes=None, labels=None):
-        image = cv2.resize(image, (self.size,
-                                   self.size))
+        # Oryginalne wymiary obrazu
+        orig_h, orig_w = image.shape[:2]
+        
+        # Przeskalowanie obrazu do 512x512
+        image = cv2.resize(image, (self.size, self.size), interpolation=cv2.INTER_LINEAR)
+        
+        if boxes is not None and len(boxes) > 0:
+            # Skalowanie bounding boxów
+            scale_x = self.size / orig_w
+            scale_y = self.size / orig_h
+            boxes = boxes.copy()  # Tworzymy kopię, aby nie modyfikować oryginalnych danych
+            boxes[:, [0, 2]] *= scale_x  # Skalowanie x1 i x2
+            boxes[:, [1, 3]] *= scale_y  # Skalowanie y1 i y2
+            
+            # Ograniczenie współrzędnych do granic obrazu (0, 512)
+            boxes[:, [0, 2]] = np.clip(boxes[:, [0, 2]], 0, self.size)
+            boxes[:, [1, 3]] = np.clip(boxes[:, [1, 3]], 0, self.size)
+
         return image, boxes, labels
 
 
@@ -205,7 +246,6 @@ class RandomContrast(object):
         assert self.upper >= self.lower, "contrast upper must be >= lower."
         assert self.lower >= 0, "contrast lower must be non-negative."
 
-    # expects float image
     def __call__(self, image, boxes=None, labels=None):
         if random.randint(2):
             alpha = random.uniform(self.lower, self.upper)
@@ -280,7 +320,7 @@ class RandomSampleCrop(object):
             if max_iou is None:
                 max_iou = float('inf')
 
-            # max trails (50)
+            # max trials (50)
             for _ in range(50):
                 current_image = image
 
@@ -333,12 +373,12 @@ class RandomSampleCrop(object):
                 # should we use the box left and top corner or the crop's
                 current_boxes[:, :2] = np.maximum(current_boxes[:, :2],
                                                   rect[:2])
-                # adjust to crop (by substracting crop's left,top)
+                # adjust to crop (by subtracting crop's left,top)
                 current_boxes[:, :2] -= rect[:2]
 
                 current_boxes[:, 2:] = np.minimum(current_boxes[:, 2:],
                                                   rect[2:])
-                # adjust to crop (by substracting crop's left,top)
+                # adjust to crop (by subtracting crop's left,top)
                 current_boxes[:, 2:] -= rect[:2]
 
                 return current_image, current_boxes, current_labels
@@ -400,10 +440,6 @@ class SwapChannels(object):
         Return:
             a tensor with channels swapped according to swap
         """
-        # if torch.is_tensor(image):
-        #     image = image.data.cpu().numpy()
-        # else:
-        #     image = np.array(image)
         image = image[:, :, self.swaps]
         return image
 
